@@ -3,18 +3,23 @@ import time
 import json
 import socket
 import struct
+import pyaudio
 import numpy as np
 import tkinter as tk
 from PIL import Image, ImageTk
 from threading import Thread
 
-import pyaudio
+host = "192.168.0.173"
+port = 5000
+
+local_host = "192.168.0.173"
+local_port = 5001
 
 # setting for pyaudio
 FORMAT = pyaudio.paInt16
-CHANNELS = 1             # 單聲道
-RATE = 44100             # 取樣率
-CHUNK = 1024             # 每塊數據大小
+CHANNELS = 1 # 單聲道
+RATE = 44100 # 取樣率
+CHUNK = 1024 # 每塊數據大小
 
 msg_str = ""
 frame_buffer = {}
@@ -179,12 +184,6 @@ def send_msg():
         fragment = msg_signal[i:i + max_packet_size]
         header = struct.pack("IHBB", 1, i // max_packet_size, i + max_packet_size >= frame_size, 2)
         sock.sendto(header + fragment, (host, port))
-
-host = "26.249.107.154"
-port = 5000
-
-local_host = "26.249.107.154"
-local_port = 5001
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((local_host, local_port))

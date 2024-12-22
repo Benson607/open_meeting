@@ -3,7 +3,7 @@ import socket
 import struct
 
 # 配置接收端地址和端口
-host = "26.249.107.154"
+host = "0.0.0.0"
 port = 5000
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((host, port))
