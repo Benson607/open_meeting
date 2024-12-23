@@ -1,8 +1,27 @@
 import json
 import socket
 import struct
+from threading import Thread
 
-# 配置接收端地址和端口
+def wait_for_order():
+    while 1:
+        try:
+            order = input()
+        except Exception as e:
+            order = "null"
+            print("not normal control:", e)
+
+        global start
+        if order == "stop":
+            start = False
+            sock.close()
+            break
+        elif order == "show user":
+            print(client_list)
+        else:
+            print("unknow command")
+
+# set ip and port of server
 host = "0.0.0.0"
 port = 5000
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -14,9 +33,16 @@ frame_buffer = {}
 max_packet_size = 1200
 current_frame_id = 0
 
-try:
-    while True:
-        packet, addr = sock.recvfrom(65535)
+start = True
+
+if 1:
+    thread_order = Thread(target=wait_for_order, daemon=True)
+    thread_order.start()
+    while start:
+        try:
+            packet, addr = sock.recvfrom(65535)
+        except Exception as e:
+            print(e)
   
         # read header
         header = packet[:struct.calcsize("IHBB")]
@@ -24,10 +50,16 @@ try:
         fragment_data = packet[struct.calcsize("IHBB"):]
         frame_size = len(fragment_data)
 
+        src_id = None
+
         if data_type == 0:
             for i in client_list:
                 if client_list[i] == addr:
                     src_id = i
+
+            if not src_id:
+                continue
+                
             for i in client_list:
                 if client_list[i] != addr:
                     for j in range(0, frame_size, max_packet_size):
@@ -38,6 +70,10 @@ try:
             for i in client_list:
                 if client_list[i] == addr:
                     src_id = i
+            
+            if not src_id:
+                continue
+
             for i in client_list:
                 if client_list[i] != addr:
                     for j in range(0, frame_size, max_packet_size):
@@ -59,12 +95,23 @@ try:
                 if json_obj["type"] == "join":
                     client_list[client_size] = addr
                     client_size += 1
+
+                    resend_signal = json.dumps({"type": "enter"}).encode("UTF-8")
+                    resend_size = len(resend_signal)
+                    for i in range(0, resend_size, max_packet_size):
+                        fragment = resend_signal[i:i + max_packet_size]
+                        header = struct.pack("IHBQB", 1, i // max_packet_size, i + max_packet_size >= resend_size, client_size - 1, 2)
+                        sock.sendto(header + resend_signal, addr)
+
                     print(f"{addr} join")
                 elif json_obj["type"] == "del" or json_obj["type"] == "msg":
 
                     for i in client_list:
                         if client_list[i] == addr:
                             src_id = i
+
+                    if not src_id:
+                        continue
                     
                     resend_signal = json.dumps(json_obj).encode("UTF-8")
                     resend_size = len(resend_signal)
@@ -80,8 +127,4 @@ try:
                         print(client_list[src_id], "leave")
                         del client_list[src_id]
 
-except Exception as e:
-    print("err:")
-    print(e)    
-finally:
-    sock.close()
+sock.close()

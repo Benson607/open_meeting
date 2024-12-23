@@ -28,6 +28,7 @@ other_list = {}
 max_packet_size = 1200
 camera_open = True
 mic_open = True
+already_join = False
 
 class ImageCapture:
     def __init__(self, image_path):
@@ -63,9 +64,13 @@ class my_canvas(tk.Canvas):
             self.create_image(0, 0, anchor=tk.NW, image=imgtk)
             self.image = imgtk
 
-def recive():
+def receive():
     while 1:
         data, addr = sock.recvfrom(65535)
+
+        if addr != (host, port):
+            print("unknow transfer", addr)
+            continue
 
         header = data[:struct.calcsize("IHBQB")]
         frame_id, fragment_id, is_last, other_id, data_type = struct.unpack("IHBQB", header)
@@ -102,6 +107,9 @@ def recive():
                     global msg_str
                     msg_str += json_obj["msg"] + "\n"
                     text_label.config(text=msg_str)
+                elif json_obj["type"] == "enter":
+                    global already_join
+                    already_join = True
 
 def update_canvas():
     # take camera
@@ -185,9 +193,26 @@ def send_msg():
         header = struct.pack("IHBB", 1, i // max_packet_size, i + max_packet_size >= frame_size, 2)
         sock.sendto(header + fragment, (host, port))
 
+# 清暫存
+def on_closing():
+
+    global already_join
+    del_signal = json.dumps({"type": "del"}).encode("UTF-8")
+    frame_size = len(del_signal)
+
+    for i in range(0, frame_size, max_packet_size):
+        fragment = del_signal[i:i + max_packet_size]
+        header = struct.pack("IHBB", 1, i // max_packet_size, i + max_packet_size >= frame_size, 2)
+        sock.sendto(header + fragment, (host, port))
+
+    sock.close()
+    audio.close(stream_in)
+    audio.close(stream_out)
+    cap.release()
+    win.destroy()
+
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((local_host, local_port))
-
 
 # init pyaudio
 audio = pyaudio.PyAudio()
@@ -218,7 +243,7 @@ mic_lock.config(bg="skyblue", command=switch_mic)
 mic_lock.place(x=200, y=600, width=100, height=50)
 
 leave_button = tk.Button(text="leave")
-leave_button.config(bg="skyblue")
+leave_button.config(bg="skyblue", command=on_closing)
 leave_button.place(x=300, y=600, width=100, height=50)
 
 text_label = tk.Label()
@@ -233,26 +258,11 @@ send_msg_button.config(command=send_msg)
 send_msg_button.place(x=1160, y=650, width=30, height=30)
 
 thread_1 = Thread(target=update_canvas, daemon=True)
-thread_2 = Thread(target=recive, daemon=True)
+thread_2 = Thread(target=receive, daemon=True)
 thread_3 = Thread(target=update_audio, daemon=True)
 thread_1.start()
 thread_2.start()
 thread_3.start()
-
-# 清暫存
-def on_closing():
-    del_signal = json.dumps({"type": "del"}).encode("UTF-8")
-    frame_id = 1
-    frame_size = len(del_signal)
-
-    for i in range(0, frame_size, max_packet_size):
-        fragment = del_signal[i:i + max_packet_size]
-        header = struct.pack("IHBB", frame_id, i // max_packet_size, i + max_packet_size >= frame_size, 2)
-        sock.sendto(header + fragment, (host, port))
-
-    sock.close()
-    cap.release()
-    win.destroy()
 
 win.protocol("WM_DELETE_WINDOW", on_closing)
 
